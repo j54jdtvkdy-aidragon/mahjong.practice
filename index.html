@@ -82,7 +82,7 @@ button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px
   <h2>河(捨て牌)</h2>
   <div id="river"></div>
 
-  <div id="feedback">牌をタップで選択 → もう一度タップで捨てる。<br>聴牌したら局終了。立直・ツモの和了点まで評価します。</div>
+  <div id="feedback">牌をタップで選択 → もう一度タップで捨てる。<br>配牌は4シャンテン。聴牌したら局終了、和了点と待ち形まで評価します。</div>
 
   <h2>手牌</h2>
   <div id="hand"></div>
@@ -93,11 +93,12 @@ button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px
 
 <div class="overlay" id="ov-start"><div class="card">
   <h1>麻雀何切る練習</h1>
-  <p>14枚の手牌から1枚ずつ切り、<b>聴牌した時点でその局は終了</b>。<br>
-立直・ツモを前提に、手役(平和・断幺九・一盃口・三色・役牌・七対子・混一色…)から和了点を計算します。</p>
-  <p>打牌は牌効率で採点(最善手 <b>10点</b>、悪手は 0)。<br>
-  聴牌する打牌は、待ち牌の枚数と和了点を合わせた期待値で比較します。</p>
-  <p>局のスコア = 打牌の平均評価×10 + 期待和了点÷100 + 速度ボーナス(12打より早い1打ごとに+5)。<br>10局の合計スコアを競います。</p>
+  <p>配牌は<b>4シャンテン</b>固定。1枚ずつ切って、<b>聴牌した時点で局終了</b>。<br>
+立直・ツモ前提で、手役(平和・断幺九・三色・役牌・七対子・混一色…)から和了点を計算します。</p>
+  <p>打牌は牌効率で採点(最善手10点、次善手も最低4点、悪手は3点以下)。<br>
+  愚形を払っても最終的に<b>良型で聴牌</b>できれば大きく挽回できます。</p>
+  <p>局スコア = 打牌評価(平均×5) + (和了点評価 + 待ち形ボーナス) × <b>巡目倍率</b><br>
+  倍率は<b>9巡目で×1.0</b>、1巡早いごとに+0.05、遅いごとに−0.05。大物手なら数巡の遅れは逆転可能。</p>
   <p id="best-start"></p>
   <button id="btn-start">スタート</button>
 </div></div>
@@ -111,7 +112,7 @@ button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px
 
 <div class="overlay" id="ov-ryu"><div class="card">
   <h1>流局</h1>
-  <p>聴牌できないまま牌山が尽きました。この局はノーカウントで配牌からやり直します。</p>
+  <p>聴牌できないまま牌山が尽きました。この局はノーカウントでやり直します。</p>
   <button id="btn-ryu">次の局へ</button>
 </div></div>
 
@@ -192,6 +193,13 @@ function waitsOf(c13, visible){
   }
   return out;
 }
+// 待ち形ボーナス: 最終待ちの残り枚数が多い(良型)ほど大きい
+function waitBonus(n){ return Math.max(0,n-3)*6; }
+function waitInfo(waits){
+  const n=waits.reduce((a,w)=>a+w.rem,0), k=waits.length;
+  const label = (k>=2&&n>=6)?'良型' : n>=4?'普通' : '愚形';
+  return {n,k,label,bonus:waitBonus(n)};
+}
 function expectedPoints(waits){
   let n=0,sum=0;
   for(const w of waits){ n+=w.rem; sum+=w.rem*w.sc.points; }
@@ -206,25 +214,29 @@ function evaluate(c14, discards){
     const visible = new Array(34);
     for(let i=0;i<34;i++) visible[i] = c14[i] + discards[i];
     const u = ukeire(c14, visible);
-    let value = u.count, exp = 0;
+    let value = u.count, exp = 0, wn = 0;
     if(u.shanten===0){
       const ws = waitsOf(c14, visible);
-      value = ws.reduce((a,w)=>a+w.rem*w.sc.points,0);
       exp = expectedPoints(ws);
+      wn = ws.reduce((a,w)=>a+w.rem,0);
+      value = ws.length ? exp/100 + waitBonus(wn) : 0;   // 期待和了点+待ち形ボーナス
     }
     c14[t]++;
-    res.push({tile:t, shanten:u.shanten, count:u.count, tiles:u.tiles, value, exp});
+    res.push({tile:t, shanten:u.shanten, count:u.count, tiles:u.tiles, value, exp, wn});
   }
-  res.sort((a,b)=> a.shanten-b.shanten || b.value-a.value || b.count-a.count);
+  // 同点なら字牌・端牌を先に切る(中張牌は残す)
+  const keep=t=>t>=27?0:(t%9===0||t%9===8)?1:(t%9===1||t%9===7)?2:3;
+  res.sort((a,b)=> a.shanten-b.shanten || b.value-a.value || b.count-a.count || keep(a.tile)-keep(b.tile));
   return res;
 }
-// 採点: 最善10点 / 同シャンテンは指標比(聴牌なら和了点込み) / 1シャンテン悪化は2点 / それ以下0
+// 採点: 最善10点 / 同シャンテンは指標比に応じ4〜10点 / 1シャンテン悪化は3点 / それ以下0
 function pointsFor(chosen, best){
   if(chosen.shanten===best.shanten){
     if(best.value===0) return 10;
-    return Math.round(10*chosen.value/best.value);
+    const r=Math.min(1,chosen.value/best.value);
+    return Math.round(10*(0.4+0.6*r));   // 次善手でも減点はゆるやか(最低4点)
   }
-  return chosen.shanten===best.shanten+1 ? 2 : 0;
+  return chosen.shanten===best.shanten+1 ? 3 : 0;
 }
 //CORE-END
 //SCORE-START
@@ -375,10 +387,12 @@ function tileName(t){ return t<27 ? `${t%9+1}${SUIT_CH[(t/9)|0]}` : HONORS[t-27]
 const $=id=>document.getElementById(id);
 
 /* ============ ゲーム状態 ============ */
-const GOAL=10, DEAD=14, PAR=12;
+const GOAL=10, DEAD=14, START_SHANTEN=4, PAR_TURN=9, TURN_STEP=0.05;
+// 巡目倍率: 9巡目=×1.0、1巡早いごとに+0.05、遅いごとに-0.05(下限×0.4)
+const speedMult=turns=>Math.max(0.4,1+(PAR_TURN-turns)*TURN_STEP);
 let G;
 function blank(){
-  return {hands:0,score:0,turns:0,perfect:0,discScore:0,agariScore:0,speedScore:0,agariPts:0,
+  return {hands:0,score:0,turns:0,perfect:0,discScore:0,agariScore:0,speedScore:0,waitScore:0,agariPts:0,
     wall:[],hand:new Array(34).fill(0),discards:new Array(34).fill(0),river:[],drawn:null,sel:null,
     handDisc:0,handBest:0,handTurns:0,log:[]};
 }
@@ -390,7 +404,7 @@ function newHand(){
     for(let i=wall.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [wall[i],wall[j]]=[wall[j],wall[i]]; }
     G.wall=wall; G.hand=new Array(34).fill(0);
     for(let i=0;i<13;i++) G.hand[G.wall.pop()]++;
-  }while(shanten(G.hand)<=0);   // 配牌時点で聴牌なら配り直し
+  }while(shanten(G.hand)!==START_SHANTEN);   // 配牌は4シャンテン固定
   G.discards=new Array(34).fill(0);
   G.river=[]; G.drawn=null; G.sel=null; G.handDisc=0; G.handBest=0; G.handTurns=0; G.log=[];
   $('feedback').innerHTML='牌をタップで選択 → もう一度タップで捨てる。<br>聴牌したらその局は終了し、立直・ツモの和了点を計算します。';
@@ -430,7 +444,7 @@ function mk(t,isDrawn){
 function rankOf(pts){
   if(pts>=10) return ['◎','最善','s'];
   if(pts>=8) return ['○','好手','a'];
-  if(pts>=4) return ['△','微妙','b'];
+  if(pts>=6) return ['△','微妙','b'];
   return ['×','悪手','c'];
 }
 const yen=n=>n.toLocaleString('ja-JP');
@@ -449,7 +463,7 @@ function discard(t){
 const shName=x=>x.shanten===0?'聴牌':`${x.shanten}シャンテン`;
 function showFeedback(t,chosen,best,pts){
   const [mark,label,cls]=rankOf(pts);
-  const detail=x=>x.shanten===0?`聴牌 / 期待${yen(Math.round(x.exp))}点`:`${shName(x)} / 受け入れ${x.count}枚`;
+  const detail=x=>x.shanten===0?`聴牌 / 待ち${x.wn}枚 期待${yen(Math.round(x.exp))}点`:`${shName(x)} / 受け入れ${x.count}枚`;
   let html=`<span class="rank ${cls}">${mark} ${label}</span> ${tileName(t)} 切り <b>${pts}/10</b><br>`;
   html+=`<span style="color:var(--muted)">${detail(chosen)}</span>`;
   if(pts<10) html+=`<br>おすすめ: <b>${tileName(best.tile)}</b> (${detail(best)})`;
@@ -461,11 +475,15 @@ function endHand(){
   const visible=G.hand.map((n,i)=>n+G.discards[i]);
   const waits=waitsOf(G.hand,visible);
   const exp=expectedPoints(waits);
+  const wi=waitInfo(waits);
   const agari=Math.round(exp/100);                              // 和了点評価: 期待和了点 ÷ 100
-  const quality=Math.round(G.handDisc/G.handTurns*10);          // 打牌評価: 平均×10 (最大100)
-  const speed=Math.max(0,PAR-G.handTurns)*5;                    // 速度: PAR打より早いほど加点
-  const total=quality+agari+speed;
-  G.score+=total; G.discScore+=quality; G.agariScore+=agari; G.speedScore+=speed; G.agariPts+=exp; G.hands++;
+  const quality=Math.round(G.handDisc/G.handTurns*5);           // 打牌評価: 平均×5 (最大50)
+  const mult=speedMult(G.handTurns);
+  const base=agari+wi.bonus;                                    // 倍率の対象: 和了点+待ち形
+  const boosted=Math.round(base*mult);
+  const speed=boosted-base;                                     // 巡目による増減
+  const total=quality+boosted;
+  G.score+=total; G.discScore+=quality; G.agariScore+=agari; G.waitScore+=wi.bonus; G.speedScore+=speed; G.agariPts+=exp; G.hands++;
   render();
 
   const box=$('agari-tiles'); box.innerHTML='';
@@ -485,12 +503,14 @@ function endHand(){
     }
     html+='</div>';
   }
-  html+=`<div class="calc">期待和了点 <b>${yen(Math.round(exp))}点</b> → 和了点評価 <b>+${agari}</b></div>`;
+  html+=`<div class="calc">期待和了点 <b>${yen(Math.round(exp))}点</b> / 待ち <b>${wi.label}(${wi.n}枚)</b></div>`;
   html+='<div class="log">'+G.log.map(l=>{const [m,,c]=rankOf(l.pts);
     return `<span class="chip ${c}">${tileName(l.tile)} ${m}${l.pts}</span>`;}).join('')+'</div>';
-  html+=`<table class="sum"><tr><td>打牌評価(${G.handTurns}打・◎${G.handBest} 平均${(G.handDisc/G.handTurns).toFixed(1)}×10)</td><td>${quality}</td></tr>`+
-    `<tr><td>和了点評価</td><td>${agari}</td></tr>`+
-    `<tr><td>速度ボーナス(${PAR}打より${Math.max(0,PAR-G.handTurns)}打早い×5)</td><td>${speed}</td></tr>`+
+  const sg=n=>n>0?'+'+n:n;
+  html+=`<table class="sum"><tr><td>打牌評価(◎${G.handBest}/${G.handTurns}打 平均${(G.handDisc/G.handTurns).toFixed(1)}×5)</td><td>${quality}</td></tr>`+
+    `<tr><td>和了点評価(期待点÷100)</td><td>${agari}</td></tr>`+
+    `<tr><td>待ち形ボーナス(${wi.label}・${wi.n}枚)</td><td>${wi.bonus}</td></tr>`+
+    `<tr><td>巡目倍率(${G.handTurns}巡目 ×${mult.toFixed(2)})</td><td>${sg(speed)}</td></tr>`+
     `<tr><td><b>この局のスコア</b></td><td class="tot">${total}</td></tr></table>`;
   $('agari-info').innerHTML=html;
   document.querySelectorAll('#agari-info .wt').forEach(e=>e.appendChild(tileEl(+e.dataset.t,'sm')));
@@ -510,22 +530,23 @@ function finish(){
     `<tr><td>最善手の数</td><td>${G.perfect}</td></tr>`+
     `<tr><td>打牌評価の合計</td><td>${G.discScore}</td></tr>`+
     `<tr><td>和了点評価の合計</td><td>${G.agariScore}</td></tr>`+
-    `<tr><td>速度ボーナスの合計</td><td>${G.speedScore}</td></tr>`+
+    `<tr><td>待ち形ボーナスの合計</td><td>${G.waitScore}</td></tr>`+
+    `<tr><td>巡目倍率による増減</td><td>${G.speedScore}</td></tr>`+
     `<tr><td>平均和了点(期待値)</td><td>${yen(Math.round(G.agariPts/GOAL))}点</td></tr>`+
     `<tr><td>1打あたり</td><td>${eff}点</td></tr>`;
   let best=null;
-  try{ best=JSON.parse(localStorage.getItem('mj-best3')||'null'); }catch(e){}
+  try{ best=JSON.parse(localStorage.getItem('mj-best4')||'null'); }catch(e){}
   let msg;
   if(!best || G.score>best.score){
     msg='🎉 ベストスコア更新！';
-    try{ localStorage.setItem('mj-best3',JSON.stringify({score:G.score,turns:G.turns})); }catch(e){}
+    try{ localStorage.setItem('mj-best4',JSON.stringify({score:G.score,turns:G.turns})); }catch(e){}
   }else msg=`ベスト: ${best.score}点 (${best.turns}打)`;
   $('end-best').textContent=msg;
   $('ov-end').classList.add('on');
 }
 function bestText(){
   try{
-    const b=JSON.parse(localStorage.getItem('mj-best3')||'null');
+    const b=JSON.parse(localStorage.getItem('mj-best4')||'null');
     return b?`ベスト: ${b.score}点 (${b.turns}打)`:'';
   }catch(e){return '';}
 }
