@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b5d3b">
+<title>麻雀何切る練習</title>
+<style>
+:root{
+  --bg:#0b5d3b; --panel:#0e4a31; --text:#f4f1e6; --muted:#a9c9b8;
+  --tile:#f7f3e3; --tile-edge:#cfc7a8; --back:#1c7a52;
+  --good:#ffd54a; --bad:#ff7a6b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+  overscroll-behavior:none;touch-action:manipulation}
+#app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
+  padding:max(10px,env(safe-area-inset-top)) 12px max(14px,env(safe-area-inset-bottom))}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
+.stat{background:var(--panel);border-radius:10px;padding:6px 10px;flex:1;text-align:center}
+.stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--muted)}
+h2{margin:14px 0 6px;font-size:12px;color:var(--muted);font-weight:600}
+#river{display:flex;flex-wrap:wrap;gap:2px;min-height:78px;background:var(--panel);
+  border-radius:10px;padding:6px;align-content:flex-start}
+#feedback{margin:10px 0;min-height:64px;background:var(--panel);border-radius:10px;
+  padding:8px 12px;font-size:14px;line-height:1.5}
+#feedback .rank{font-size:22px;font-weight:800;margin-right:6px}
+.rank.s{color:var(--good)} .rank.a{color:#9be59b} .rank.b{color:#ffb86b} .rank.c{color:var(--bad)}
+.tile{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+  background:var(--tile);border:1px solid var(--tile-edge);border-bottom-width:4px;border-radius:5px;
+  color:#222;font-weight:800;line-height:1;user-select:none}
+.tile .n{font-size:1em}
+.tile .s{font-size:.55em;margin-top:.12em}
+.tile.man{color:#c2261b} .tile.pin{color:#1454a8} .tile.sou{color:#177a3a}
+.tile.z{color:#222} .tile.haku{color:#666} .tile.hatsu{color:#177a3a} .tile.chun{color:#c2261b}
+.sm{width:24px;height:33px;font-size:15px}
+.lg{width:calc((100vw - 24px - 26px)/7);max-width:68px;aspect-ratio:3/4;font-size:clamp(20px,6.4vw,32px)}
+#hand{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:4px}
+#hand .tile{transition:transform .08s;cursor:pointer}
+#hand .tile.sel{transform:translateY(-10px);box-shadow:0 6px 10px rgba(0,0,0,.4);border-color:var(--good)}
+#hand .tile.drawn{margin-left:8px}
+.hint{text-align:center;font-size:12px;color:var(--muted);margin-top:14px;min-height:16px}
+button{font:inherit;border:0;border-radius:12px;padding:14px 18px;font-weight:800;font-size:18px;
+  background:var(--good);color:#3b2a00;width:100%}
+button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px;width:auto}
+#tsumo{margin-top:12px;display:none}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;
+  justify-content:center;padding:20px;z-index:10}
+.overlay.on{display:flex}
+.card{background:var(--panel);border-radius:16px;padding:22px;width:100%;max-width:420px;text-align:center}
+.card h1{margin:0 0 10px;font-size:26px}
+.card p{margin:8px 0;color:var(--muted);font-size:14px;line-height:1.6}
+.card .big{font-size:44px;font-weight:900;color:var(--good);margin:4px 0}
+.card table{margin:10px auto;font-size:15px;border-collapse:collapse}
+.card td{padding:3px 10px} .card td:first-child{text-align:left;color:var(--muted)}
+.card .tiles{display:flex;gap:3px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+.card button+button{margin-top:10px}
+.foot{margin-top:auto;padding-top:14px;display:flex;justify-content:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat"><b id="wins">0/10</b><span>和了</span></div>
+    <div class="stat"><b id="score">0</b><span>スコア</span></div>
+    <div class="stat"><b id="turns">0</b><span>打牌数</span></div>
+    <div class="stat"><b id="left">0</b><span>残り牌</span></div>
+  </header>
+
+  <h2>河(捨て牌)</h2>
+  <div id="river"></div>
+
+  <div id="feedback">牌をタップで選択 → もう一度タップで捨てる。<br>10回和了するまでに、より良い牌を切ってスコアを稼ごう。</div>
+
+  <h2>手牌</h2>
+  <div id="hand"></div>
+  <div class="hint" id="hint"></div>
+  <button id="tsumo">ツモ和了！</button>
+
+  <div class="foot"><button class="sec" id="giveup">最初からやり直す</button></div>
+</div>
+
+<div class="overlay" id="ov-start"><div class="card">
+  <h1>麻雀何切る練習</h1>
+  <p>14枚の手牌から1枚切る練習ゲーム。<br>役は不問、4面子1雀頭・七対子・国士無双で和了。</p>
+  <p>切った牌の<b>牌効率</b>(シャンテン数と受け入れ枚数)で採点します。<br>
+  最善手 <b>+10</b>、次善以降は受け入れ枚数に応じて加点、<br>シャンテン数が戻る悪手は <b>0</b>。和了ボーナス <b>+20</b>。</p>
+  <p>10回和了したら終了。少ない打牌数で高スコアを目指そう。</p>
+  <p id="best-start"></p>
+  <button id="btn-start">スタート</button>
+</div></div>
+
+<div class="overlay" id="ov-agari"><div class="card">
+  <h1>和了！</h1>
+  <div class="tiles" id="agari-tiles"></div>
+  <p id="agari-info"></p>
+  <button id="btn-next">次の局へ</button>
+</div></div>
+
+<div class="overlay" id="ov-ryu"><div class="card">
+  <h1>流局</h1>
+  <p>牌山が尽きました。配牌からやり直します。</p>
+  <button id="btn-ryu">次の局へ</button>
+</div></div>
+
+<div class="overlay" id="ov-end"><div class="card">
+  <h1>10和了達成！</h1>
+  <div class="big" id="end-score">0</div>
+  <table id="end-table"></table>
+  <p id="end-best"></p>
+  <button id="btn-again">もう一度</button>
+</div></div>
+
+<script>
+/* ============ 牌効率ロジック(純関数) ============ */
+// 牌インデックス: 0-8 萬, 9-17 筒, 18-26 索, 27-33 字(東南西北白發中)
+//CORE-START
+const KOKUSHI = [0,8,9,17,18,26,27,28,29,30,31,32,33];
+
+function shanten(c){
+  let best = Math.min(chiitoi(c), kokushi(c));
+  const w = c.slice();
+  (function dfs(i,m,t,p){
+    while(i<34 && w[i]===0) i++;
+    if(i>=34){
+      const tt = Math.min(t, 4-m);
+      const s = 8 - 2*m - tt - p;
+      if(s<best) best = s;
+      return;
+    }
+    if(w[i]>=3){ w[i]-=3; dfs(i,m+1,t,p); w[i]+=3; }
+    if(i<27 && i%9<=6 && w[i+1]>0 && w[i+2]>0){
+      w[i]--;w[i+1]--;w[i+2]--; dfs(i,m+1,t,p); w[i]++;w[i+1]++;w[i+2]++;
+    }
+    if(w[i]>=2){
+      if(!p){ w[i]-=2; dfs(i,m,t,1); w[i]+=2; }
+      w[i]-=2; dfs(i,m,t+1,p); w[i]+=2;
+    }
+    if(i<27){
+      if(i%9<=7 && w[i+1]>0){ w[i]--;w[i+1]--; dfs(i,m,t+1,p); w[i]++;w[i+1]++; }
+      if(i%9<=6 && w[i+2]>0){ w[i]--;w[i+2]--; dfs(i,m,t+1,p); w[i]++;w[i+2]++; }
+    }
+    w[i]--; dfs(i,m,t,p); w[i]++;
+  })(0,0,0,0);
+  return best;
+}
+function chiitoi(c){
+  let pairs=0, kinds=0;
+  for(let i=0;i<34;i++){ if(c[i]>0) kinds++; if(c[i]>=2) pairs++; }
+  return 6 - pairs + Math.max(0, 7-kinds);
+}
+function kokushi(c){
+  let kinds=0, pair=0;
+  for(const i of KOKUSHI){ if(c[i]>0) kinds++; if(c[i]>=2) pair=1; }
+  return 13 - kinds - pair;
+}
+// 13枚 → 有効牌(シャンテンを減らす牌)の残り枚数
+function ukeire(c13, visible){
+  const base = shanten(c13);
+  let total=0; const tiles=[];
+  for(let t=0;t<34;t++){
+    const rem = 4 - visible[t];
+    if(rem<=0) continue;
+    c13[t]++;
+    const s = shanten(c13);
+    c13[t]--;
+    if(s<base){ total+=rem; tiles.push(t); }
+  }
+  return {shanten:base, count:total, tiles};
+}
+// 14枚の各打牌候補を評価
+function evaluate(c14, discards){
+  const res = [];
+  for(let t=0;t<34;t++){
+    if(c14[t]===0) continue;
+    c14[t]--;
+    const visible = new Array(34);
+    for(let i=0;i<34;i++) visible[i] = c14[i] + discards[i];
+    const u = ukeire(c14, visible);
+    c14[t]++;
+    res.push({tile:t, shanten:u.shanten, count:u.count, tiles:u.tiles});
+  }
+  res.sort((a,b)=> a.shanten-b.shanten || b.count-a.count);
+  return res;
+}
+// 採点: 最善10点 / 同シャンテンは受け入れ比 / 1シャンテン悪化は2点 / それ以下0
+function pointsFor(chosen, best){
+  if(chosen.shanten===best.shanten){
+    if(best.count===0) return 10;
+    return Math.round(10*chosen.count/best.count);
+  }
+  return chosen.shanten===best.shanten+1 ? 2 : 0;
+}
+//CORE-END
+
+/* ============ 表示 ============ */
+const SUIT_CLS=['man','pin','sou'], SUIT_CH=['萬','筒','索'];
+const HONORS=['東','南','西','北','白','發','中'];
+const HONOR_CLS=['z','z','z','z','haku','hatsu','chun'];
+function tileEl(t,size){
+  const d=document.createElement('div');
+  if(t<27){
+    d.className=`tile ${SUIT_CLS[(t/9)|0]} ${size}`;
+    d.innerHTML=`<span class="n">${t%9+1}</span><span class="s">${SUIT_CH[(t/9)|0]}</span>`;
+  }else{
+    d.className=`tile ${HONOR_CLS[t-27]} ${size}`;
+    d.innerHTML=`<span class="n">${HONORS[t-27]}</span>`;
+  }
+  return d;
+}
+function tileName(t){ return t<27 ? `${t%9+1}${SUIT_CH[(t/9)|0]}` : HONORS[t-27]; }
+const $=id=>document.getElementById(id);
+
+/* ============ ゲーム状態 ============ */
+const WIN_GOAL=10, DEAD=14;
+let G;
+function newGame(){
+  G={wins:0,score:0,turns:0,perfect:0,handTurns:0,handScore:0};
+  newHand();
+}
+function newHand(){
+  const wall=[];
+  for(let t=0;t<34;t++) for(let k=0;k<4;k++) wall.push(t);
+  for(let i=wall.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [wall[i],wall[j]]=[wall[j],wall[i]]; }
+  G.wall=wall; G.hand=new Array(34).fill(0); G.discards=new Array(34).fill(0);
+  G.river=[]; G.drawn=null; G.sel=null; G.handTurns=0; G.handScore=0;
+  for(let i=0;i<13;i++) G.hand[G.wall.pop()]++;
+  $('feedback').innerHTML='牌をタップで選択 → もう一度タップで捨てる。';
+  draw();
+}
+function draw(){
+  if(G.wall.length<=DEAD){ $('ov-ryu').classList.add('on'); render(); return; }
+  const t=G.wall.pop();
+  G.hand[t]++; G.drawn=t; G.sel=null;
+  render();
+  if(shanten(G.hand)===-1){
+    $('tsumo').style.display='block';
+    $('hint').textContent='和了形です！切ってもOKですが、ツモ和了しましょう';
+  }
+}
+function render(){
+  $('wins').textContent=`${G.wins}/${WIN_GOAL}`;
+  $('score').textContent=G.score;
+  $('turns').textContent=G.turns;
+  $('left').textContent=Math.max(0,G.wall.length-DEAD);
+  const r=$('river'); r.innerHTML='';
+  G.river.forEach(t=>r.appendChild(tileEl(t,'sm')));
+  const h=$('hand'); h.innerHTML='';
+  // 手牌をソート表示、ツモ牌は右端に分けて表示
+  const cnt=G.hand.slice();
+  let drawnEl=null;
+  if(G.drawn!==null){ cnt[G.drawn]--; }
+  for(let t=0;t<34;t++) for(let k=0;k<cnt[t];k++) h.appendChild(mk(t,false));
+  if(G.drawn!==null) h.appendChild(mk(G.drawn,true));
+  $('tsumo').style.display='none';
+  $('hint').textContent = G.sel!==null ? 'もう一度タップで捨てる' : '';
+}
+function mk(t,isDrawn){
+  const e=tileEl(t,'lg');
+  if(isDrawn) e.classList.add('drawn');
+  const key=t+(isDrawn?'d':'');
+  if(G.sel===key) e.classList.add('sel');
+  e.addEventListener('click',()=>{
+    if(G.sel===key) discard(t,isDrawn);
+    else{ G.sel=key; render(); if(shanten(G.hand)===-1){ $('tsumo').style.display='block'; } }
+  });
+  return e;
+}
+function discard(t,isDrawn){
+  const evals=evaluate(G.hand,G.discards);
+  const best=evals[0];
+  const chosen=evals.find(e=>e.tile===t);
+  const pts=pointsFor(chosen,best);
+  G.score+=pts; G.handScore+=pts; G.turns++; G.handTurns++;
+  if(pts===10) G.perfect++;
+  G.hand[t]--; G.discards[t]++; G.river.push(t); G.drawn=null; G.sel=null;
+  showFeedback(t,chosen,best,pts);
+  draw();
+}
+function showFeedback(t,chosen,best,pts){
+  let rank,cls;
+  if(pts>=10){rank='◎ 最善';cls='s';}
+  else if(pts>=8){rank='○ 好手';cls='a';}
+  else if(pts>=4){rank='△ 微妙';cls='b';}
+  else{rank='× 悪手';cls='c';}
+  const sh=x=>x.shanten===0?'聴牌':`${x.shanten}シャンテン`;
+  let html=`<span class="rank ${cls}">${rank}</span> ${tileName(t)} 切り <b>+${pts}</b><br>`;
+  html+=`<span style="color:var(--muted)">${sh(chosen)} / 受け入れ${chosen.count}枚</span>`;
+  if(pts<10){
+    html+=`<br>おすすめ: <b>${tileName(best.tile)}</b> (${sh(best)} / ${best.count}枚)`;
+  }
+  $('feedback').innerHTML=html;
+}
+
+function tsumo(){
+  G.wins++; G.score+=20; G.handScore+=20;
+  const box=$('agari-tiles'); box.innerHTML='';
+  for(let t=0;t<34;t++) for(let k=0;k<G.hand[t];k++) box.appendChild(tileEl(t,'sm'));
+  $('agari-info').innerHTML=`この局: ${G.handTurns}打 / +${G.handScore}点(和了ボーナス+20含む)<br>${G.wins}/${WIN_GOAL} 和了`;
+  render();
+  $('ov-agari').classList.add('on');
+}
+function afterAgari(){
+  $('ov-agari').classList.remove('on');
+  if(G.wins>=WIN_GOAL) finish(); else newHand();
+}
+function finish(){
+  const eff=G.turns? Math.round(G.score/G.turns*10)/10 : 0;
+  $('end-score').textContent=G.score+' 点';
+  $('end-table').innerHTML=
+    `<tr><td>総打牌数</td><td>${G.turns}</td></tr>`+
+    `<tr><td>最善手の数</td><td>${G.perfect}</td></tr>`+
+    `<tr><td>1打あたり</td><td>${eff}点</td></tr>`;
+  let best=null;
+  try{ best=JSON.parse(localStorage.getItem('mj-best')||'null'); }catch(e){}
+  let msg;
+  if(!best || G.score>best.score){
+    msg='🎉 ベストスコア更新！';
+    try{ localStorage.setItem('mj-best',JSON.stringify({score:G.score,turns:G.turns})); }catch(e){}
+  }else msg=`ベスト: ${best.score}点 (${best.turns}打)`;
+  $('end-best').textContent=msg;
+  $('ov-end').classList.add('on');
+}
+function bestText(){
+  try{
+    const b=JSON.parse(localStorage.getItem('mj-best')||'null');
+    return b?`ベスト: ${b.score}点 (${b.turns}打)`:'';
+  }catch(e){return '';}
+}
+
+$('tsumo').onclick=tsumo;
+$('btn-next').onclick=afterAgari;
+$('btn-ryu').onclick=()=>{ $('ov-ryu').classList.remove('on'); newHand(); };
+$('btn-again').onclick=()=>{ $('ov-end').classList.remove('on'); newGame(); };
+$('giveup').onclick=()=>{ if(confirm('最初からやり直しますか?')) newGame(); };
+$('btn-start').onclick=()=>{ $('ov-start').classList.remove('on'); newGame(); };
+$('best-start').textContent=bestText();
+$('ov-start').classList.add('on');
+G={wins:0,score:0,turns:0,wall:[],hand:new Array(34).fill(0),river:[],drawn:null,sel:null};
+render();
+</script>
+</body>
+</html>
