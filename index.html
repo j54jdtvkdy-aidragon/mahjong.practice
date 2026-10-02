@@ -75,14 +75,14 @@ button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px
   <header>
     <div class="stat"><b id="wins">1/10</b><span>局</span></div>
     <div class="stat"><b id="score">0</b><span>スコア</span></div>
-    <div class="stat"><b id="turns">0</b><span>打牌数</span></div>
+    <div class="stat"><b id="turns">0</b><span>巡目</span></div>
     <div class="stat"><b id="left">0</b><span>残り牌</span></div>
   </header>
 
   <h2>河(捨て牌)</h2>
   <div id="river"></div>
 
-  <div id="feedback">牌をタップで選択 → もう一度タップで捨てる。<br>配牌は4シャンテン。聴牌したら局終了、和了点と待ち形まで評価します。</div>
+  <div id="feedback">牌をタップで選択 → もう一度タップで捨てる。<br>明らかに損な牌を切ると減点。聴牌したら局終了です。</div>
 
   <h2>手牌</h2>
   <div id="hand"></div>
@@ -93,12 +93,13 @@ button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px
 
 <div class="overlay" id="ov-start"><div class="card">
   <h1>麻雀何切る練習</h1>
-  <p>配牌は<b>4シャンテン</b>固定。1枚ずつ切って、<b>聴牌した時点で局終了</b>。<br>
-立直・ツモ前提で、手役(平和・断幺九・三色・役牌・七対子・混一色…)から和了点を計算します。</p>
-  <p>打牌は牌効率で採点(最善手10点、次善手も最低4点、悪手は3点以下)。<br>
-  愚形を払っても最終的に<b>良型で聴牌</b>できれば大きく挽回できます。</p>
-  <p>局スコア = 打牌評価(平均×5) + (和了点評価 + 待ち形ボーナス) × <b>巡目倍率</b><br>
-  倍率は<b>9巡目で×1.0</b>、1巡早いごとに+0.05、遅いごとに−0.05。大物手なら数巡の遅れは逆転可能。</p>
+  <p>配牌は<b>4シャンテン</b>固定、<b>字牌・ドラ・赤ドラなし</b>。<br>
+1枚ずつ切って、<b>聴牌した時点で局終了</b>。立直・ツモ前提で手役の飜数を計算します。</p>
+  <p><b>基準点 100</b> = 平均的な局<br>
+  (平均2.9飜・平均10.9巡目で聴牌・待ち平均6.1枚・減点なし)</p>
+  <p>基準との差でスコアが増減します。<br>
+  飜数 ±1 → <b>±15</b> / 巡目 ±1 → <b>∓4</b> / 待ち ±1枚 → <b>±3</b><br>
+  明らかに損な牌(シャンテン戻し・受け入れが大きく減る)だけ減点。最善手でなくても減点なしです。</p>
   <p id="best-start"></p>
   <button id="btn-start">スタート</button>
 </div></div>
@@ -125,53 +126,44 @@ button.sec{background:var(--panel);color:var(--text);font-size:14px;padding:10px
 </div></div>
 
 <script>
-/* ============ 牌効率ロジック(純関数) ============ */
-// 牌インデックス: 0-8 萬, 9-17 筒, 18-26 索, 27-33 字(東南西北白發中)
-//CORE-START
-const KOKUSHI = [0,8,9,17,18,26,27,28,29,30,31,32,33];
+const NT=27;   // 牌の種類: 0-8 萬, 9-17 筒, 18-26 索 (字牌なし・計108枚)
 
+/* ---------- シャンテン数 ---------- */
 function shanten(c){
-  let best = Math.min(chiitoi(c), kokushi(c));
+  let best = chiitoi(c);
   const w = c.slice();
   (function dfs(i,m,t,p){
-    while(i<34 && w[i]===0) i++;
-    if(i>=34){
+    while(i<NT && w[i]===0) i++;
+    if(i>=NT){
       const tt = Math.min(t, 4-m);
       const s = 8 - 2*m - tt - p;
       if(s<best) best = s;
       return;
     }
     if(w[i]>=3){ w[i]-=3; dfs(i,m+1,t,p); w[i]+=3; }
-    if(i<27 && i%9<=6 && w[i+1]>0 && w[i+2]>0){
+    if(i%9<=6 && w[i+1]>0 && w[i+2]>0){
       w[i]--;w[i+1]--;w[i+2]--; dfs(i,m+1,t,p); w[i]++;w[i+1]++;w[i+2]++;
     }
     if(w[i]>=2){
       if(!p){ w[i]-=2; dfs(i,m,t,1); w[i]+=2; }
       w[i]-=2; dfs(i,m,t+1,p); w[i]+=2;
     }
-    if(i<27){
-      if(i%9<=7 && w[i+1]>0){ w[i]--;w[i+1]--; dfs(i,m,t+1,p); w[i]++;w[i+1]++; }
-      if(i%9<=6 && w[i+2]>0){ w[i]--;w[i+2]--; dfs(i,m,t+1,p); w[i]++;w[i+2]++; }
-    }
+    if(i%9<=7 && w[i+1]>0){ w[i]--;w[i+1]--; dfs(i,m,t+1,p); w[i]++;w[i+1]++; }
+    if(i%9<=6 && w[i+2]>0){ w[i]--;w[i+2]--; dfs(i,m,t+1,p); w[i]++;w[i+2]++; }
     w[i]--; dfs(i,m,t,p); w[i]++;
   })(0,0,0,0);
   return best;
 }
 function chiitoi(c){
   let pairs=0, kinds=0;
-  for(let i=0;i<34;i++){ if(c[i]>0) kinds++; if(c[i]>=2) pairs++; }
+  for(let i=0;i<NT;i++){ if(c[i]>0) kinds++; if(c[i]>=2) pairs++; }
   return 6 - pairs + Math.max(0, 7-kinds);
-}
-function kokushi(c){
-  let kinds=0, pair=0;
-  for(const i of KOKUSHI){ if(c[i]>0) kinds++; if(c[i]>=2) pair=1; }
-  return 13 - kinds - pair;
 }
 // 13枚 → 有効牌(シャンテンを減らす牌)の残り枚数
 function ukeire(c13, visible){
   const base = shanten(c13);
   let total=0; const tiles=[];
-  for(let t=0;t<34;t++){
+  for(let t=0;t<NT;t++){
     const rem = 4 - visible[t];
     if(rem<=0) continue;
     c13[t]++;
@@ -181,70 +173,10 @@ function ukeire(c13, visible){
   }
   return {shanten:base, count:total, tiles};
 }
-// 待ち牌ごとの和了点(立直・ツモ前提)。13枚の聴牌形が対象
-function waitsOf(c13, visible){
-  const out=[];
-  for(let t=0;t<34;t++){
-    const rem=4-visible[t];
-    if(rem<=0) continue;
-    c13[t]++;
-    if(shanten(c13)===-1) out.push({t, rem, sc:scoreHand(c13,t)});
-    c13[t]--;
-  }
-  return out;
-}
-// 待ち形ボーナス: 最終待ちの残り枚数が多い(良型)ほど大きい
-function waitBonus(n){ return Math.max(0,n-3)*6; }
-function waitInfo(waits){
-  const n=waits.reduce((a,w)=>a+w.rem,0), k=waits.length;
-  const label = (k>=2&&n>=6)?'良型' : n>=4?'普通' : '愚形';
-  return {n,k,label,bonus:waitBonus(n)};
-}
-function expectedPoints(waits){
-  let n=0,sum=0;
-  for(const w of waits){ n+=w.rem; sum+=w.rem*w.sc.points; }
-  return n? sum/n : 0;
-}
-// 14枚の各打牌候補を評価。聴牌になる打牌は「受け入れ枚数×和了点」で比較する
-function evaluate(c14, discards){
-  const res = [];
-  for(let t=0;t<34;t++){
-    if(c14[t]===0) continue;
-    c14[t]--;
-    const visible = new Array(34);
-    for(let i=0;i<34;i++) visible[i] = c14[i] + discards[i];
-    const u = ukeire(c14, visible);
-    let value = u.count, exp = 0, wn = 0;
-    if(u.shanten===0){
-      const ws = waitsOf(c14, visible);
-      exp = expectedPoints(ws);
-      wn = ws.reduce((a,w)=>a+w.rem,0);
-      value = ws.length ? exp/100 + waitBonus(wn) : 0;   // 期待和了点+待ち形ボーナス
-    }
-    c14[t]++;
-    res.push({tile:t, shanten:u.shanten, count:u.count, tiles:u.tiles, value, exp, wn});
-  }
-  // 同点なら字牌・端牌を先に切る(中張牌は残す)
-  const keep=t=>t>=27?0:(t%9===0||t%9===8)?1:(t%9===1||t%9===7)?2:3;
-  res.sort((a,b)=> a.shanten-b.shanten || b.value-a.value || b.count-a.count || keep(a.tile)-keep(b.tile));
-  return res;
-}
-// 採点: 最善10点 / 同シャンテンは指標比に応じ4〜10点 / 1シャンテン悪化は3点 / それ以下0
-function pointsFor(chosen, best){
-  if(chosen.shanten===best.shanten){
-    if(best.value===0) return 10;
-    const r=Math.min(1,chosen.value/best.value);
-    return Math.round(10*(0.4+0.6*r));   // 次善手でも減点はゆるやか(最低4点)
-  }
-  return chosen.shanten===best.shanten+1 ? 3 : 0;
-}
-//CORE-END
-//SCORE-START
-/* ---------- 役・点数計算(門前・立直・ツモ前提、子、東場南家、ドラなし) ---------- */
-const BAKAZE=27, JIKAZE=28, DRAGONS=[31,32,33], WINDS=[27,28,29,30];
-const isYao=t=>t>=27||t%9===0||t%9===8;
-const YH_NAME={27:'場風 東',28:'自風 南',31:'役牌 白',32:'役牌 發',33:'役牌 中'};
-const GREEN=[19,20,21,23,25,32];
+
+/* ---------- 役・点数計算(門前・立直・ツモ前提、子、字牌/ドラ/裏ドラ/赤ドラなし) ---------- */
+const isYao=t=>t%9===0||t%9===8;
+const GREEN=[19,20,21,23,25];   // 緑一色: 索子の 2 3 4 6 8
 function calcPoints(han,fu,ym){
   let base;
   if(ym) base=8000*ym;
@@ -256,15 +188,15 @@ function calcPoints(han,fu,ym){
 }
 function decomps(c){
   const out=[], w=c.slice();
-  for(let p=0;p<34;p++){
+  for(let p=0;p<NT;p++){
     if(w[p]<2) continue;
     w[p]-=2;
     const gs=[];
     (function rec(i){
-      while(i<34&&w[i]===0) i++;
-      if(i>=34){ out.push({pair:p,groups:gs.slice()}); return; }
+      while(i<NT&&w[i]===0) i++;
+      if(i>=NT){ out.push({pair:p,groups:gs.slice()}); return; }
       if(w[i]>=3){ w[i]-=3; gs.push({k:'k',t:i}); rec(i); gs.pop(); w[i]+=3; }
-      if(i<27&&i%9<=6&&w[i+1]>0&&w[i+2]>0){
+      if(i%9<=6&&w[i+1]>0&&w[i+2]>0){
         w[i]--;w[i+1]--;w[i+2]--; gs.push({k:'s',t:i}); rec(i); gs.pop(); w[i]++;w[i+1]++;w[i+2]++;
       }
     })(0);
@@ -274,35 +206,36 @@ function decomps(c){
 }
 // 手全体の構成だけで決まる役(七対子・通常形共通)
 function commonYaku(c){
-  const y=[], ym=[];
-  let hasHonor=false, suits=new Set(), allYao=true, noYao=true, allGreen=true, allTerm=true;
-  for(let t=0;t<34;t++){
+  const y=[], ym=[], suits=new Set();
+  let noYao=true, allGreen=true, allTerm=true;
+  for(let t=0;t<NT;t++){
     if(!c[t]) continue;
-    if(t>=27) hasHonor=true; else suits.add((t/9)|0);
-    if(!isYao(t)) allYao=false; else noYao=false;
+    suits.add((t/9)|0);
+    if(isYao(t)) noYao=false; else allTerm=false;
     if(!GREEN.includes(t)) allGreen=false;
-    if(t>=27||!isYao(t)) allTerm=false;
   }
-  if(!hasHonor&&suits.size===0) return {y,ym};
-  if(!suits.size) ym.push('字一色');
   if(allTerm) ym.push('清老頭');
   if(allGreen) ym.push('緑一色');
+  if(suits.size===1){
+    const u=[...suits][0], b=9*u;
+    let chuuren=c[b]>=3&&c[b+8]>=3;
+    for(let i=1;i<8;i++) if(c[b+i]<1) chuuren=false;
+    if(chuuren) ym.push('九蓮宝燈');
+    y.push(['清一色',6]);
+  }
   if(noYao) y.push(['断幺九',1]);
-  if(allYao&&hasHonor&&suits.size) y.push(['混老頭',2]);
-  if(suits.size===1) y.push(hasHonor?['混一色',3]:['清一色',6]);
   return {y,ym};
 }
+function mkResult(list,ym,fu){
+  if(ym.length) return {han:0,hanEq:13*ym.length,fu:0,yakuman:ym.length,yaku:ym.map(n=>[n,'役満']),points:calcPoints(0,0,ym.length)};
+  const han=list.reduce((a,b)=>a+b[1],0);
+  return {han,hanEq:han,fu,yakuman:0,yaku:list,points:calcPoints(han,fu,0)};
+}
 function scoreChiitoi(c){
-  let pairs=0; for(let t=0;t<34;t++){ if(c[t]===2) pairs++; else if(c[t]) return null; }
+  let pairs=0; for(let t=0;t<NT;t++){ if(c[t]===2) pairs++; else if(c[t]) return null; }
   if(pairs!==7) return null;
   const {y,ym}=commonYaku(c);
-  const list=[['立直',1],['門前清自摸和',1],['七対子',2],...y];
-  return mkResult(list,ym,25);
-}
-function mkResult(list,ym,fu){
-  if(ym.length) return {han:0,fu:0,yakuman:ym.length,yaku:ym.map(n=>[n,'役満']),points:calcPoints(0,0,ym.length)};
-  const han=list.reduce((a,b)=>a+b[1],0);
-  return {han,fu,yakuman:0,yaku:list,points:calcPoints(han,fu,0)};
+  return mkResult([['立直',1],['門前清自摸和',1],['七対子',2],...y],ym,25);
 }
 function scoreNormal(c,w){
   const {y:cy,ym:cym}=commonYaku(c);
@@ -311,13 +244,6 @@ function scoreNormal(c,w){
     const seqs=d.groups.filter(g=>g.k==='s'), kous=d.groups.filter(g=>g.k==='k');
     const ym=cym.slice(), y=[];
     if(kous.length===4) ym.push('四暗刻');
-    const dk=kous.filter(g=>DRAGONS.includes(g.t)).length;
-    if(dk===3) ym.push('大三元');
-    const wk=kous.filter(g=>WINDS.includes(g.t)).length, wp=WINDS.includes(d.pair);
-    if(wk===4) ym.push('大四喜'); else if(wk===3&&wp) ym.push('小四喜');
-    // 通常役
-    for(const g of kous) if(YH_NAME[g.t]) y.push([YH_NAME[g.t],1]);
-    if(dk===2&&DRAGONS.includes(d.pair)) y.push(['小三元',2]);
     if(kous.length===4) y.push(['対々和',2]);
     else if(kous.length===3) y.push(['三暗刻',2]);
     for(let n=0;n<9;n++) if(kous.some(g=>g.t===n)&&kous.some(g=>g.t===9+n)&&kous.some(g=>g.t===18+n)){ y.push(['三色同刻',2]); break; }
@@ -326,10 +252,8 @@ function scoreNormal(c,w){
     const cnt={}; seqs.forEach(g=>cnt[g.t]=(cnt[g.t]||0)+1);
     const pk=Object.values(cnt).reduce((a,v)=>a+(v>>1),0);
     if(pk>=2) y.push(['二盃口',3]); else if(pk===1) y.push(['一盃口',1]);
-    if(seqs.length&&isYao(d.pair)&&d.groups.every(g=>g.k==='s'?(g.t%9===0||g.t%9===6):isYao(g.t))){
-      let honor=false; for(let t=27;t<34;t++) if(c[t]) honor=true;
-      y.push(honor?['混全帯幺九',2]:['純全帯幺九',3]);
-    }
+    if(seqs.length&&isYao(d.pair)&&d.groups.every(g=>g.k==='s'?(g.t%9===0||g.t%9===6):isYao(g.t)))
+      y.push(['純全帯幺九',3]);
     // 待ちの解釈ごとに符・平和を判定
     const waits=[];
     for(const g of d.groups){
@@ -341,77 +265,138 @@ function scoreNormal(c,w){
       }
     }
     if(d.pair===w) waits.push('tan');
-    const pairFu=(DRAGONS.includes(d.pair)||d.pair===BAKAZE||d.pair===JIKAZE)?2:0;
     for(const wt of new Set(waits)){
-      const pinfu=kous.length===0&&pairFu===0&&wt==='ryan';
+      const pinfu=kous.length===0&&wt==='ryan';
       const list=[['立直',1],['門前清自摸和',1],...(pinfu?[['平和',1]]:[]),...cy,...y];
       let fu=20;
       if(!pinfu){
-        fu+=2+pairFu+(wt==='kan'||wt==='pen'||wt==='tan'?2:0);
+        fu+=2+(wt==='kan'||wt==='pen'||wt==='tan'?2:0);
         for(const g of kous) fu+=isYao(g.t)?8:4;
         fu=Math.ceil(fu/10)*10;
       }
       const r=mkResult(list,ym,fu);
-      if(!best||r.points>best.points) best=r;
+      if(!best||r.points>best.points||(r.points===best.points&&r.hanEq>best.hanEq)) best=r;
     }
   }
   return best;
 }
 // 14枚の完成形(和了牌 w)を採点。最も高くなる解釈を採用
 function scoreHand(c14,w){
-  if(kokushi(c14)===-1) return {han:0,fu:0,yakuman:1,yaku:[['国士無双','役満']],points:calcPoints(0,0,1)};
   let best=scoreNormal(c14,w);
   const ch=scoreChiitoi(c14);
   if(ch&&(!best||ch.points>best.points)) best=ch;
-  return best||{han:0,fu:0,yakuman:0,yaku:[],points:0};
+  return best||{han:0,hanEq:0,fu:0,yakuman:0,yaku:[],points:0};
 }
-//SCORE-END
 
+/* ---------- 聴牌形の評価 ---------- */
+// 待ち牌ごとの和了(立直・ツモ前提)。13枚の聴牌形が対象
+function waitsOf(c13, visible){
+  const out=[];
+  for(let t=0;t<NT;t++){
+    const rem=4-visible[t];
+    if(rem<=0) continue;
+    c13[t]++;
+    if(shanten(c13)===-1) out.push({t, rem, sc:scoreHand(c13,t)});
+    c13[t]--;
+  }
+  return out;
+}
+const waitCount=ws=>ws.reduce((a,w)=>a+w.rem,0);
+function expectedOf(ws,f){   // 残り枚数で重み付けした期待値
+  const n=waitCount(ws);
+  return n? ws.reduce((a,w)=>a+w.rem*f(w.sc),0)/n : 0;
+}
+const expectedHan=ws=>expectedOf(ws,s=>s.hanEq);
+const expectedPoints=ws=>expectedOf(ws,s=>s.points);
+
+/* ---------- 打牌の評価 ---------- */
+// 14枚の各打牌候補を評価(シャンテン数・受け入れ枚数・聴牌なら待ちの内容)
+function evaluate(c14, discards){
+  const res = [];
+  for(let t=0;t<NT;t++){
+    if(c14[t]===0) continue;
+    c14[t]--;
+    const visible = new Array(34).fill(0);
+    for(let i=0;i<NT;i++) visible[i] = c14[i] + discards[i];
+    const u = ukeire(c14, visible);
+    let value = u.count, exp = 0, wn = 0, eHan = 0;
+    if(u.shanten===0){
+      const ws = waitsOf(c14, visible);
+      wn = waitCount(ws); exp = expectedPoints(ws); eHan = expectedHan(ws);
+      value = ws.reduce((a,w)=>a+w.rem*w.sc.points,0);   // おすすめ順: 待ち枚数×和了点
+    }
+    c14[t]++;
+    res.push({tile:t, shanten:u.shanten, count:u.count, tiles:u.tiles, value, exp, wn, eHan});
+  }
+  // 同点なら端牌を先に切る(中張牌は残す)
+  const keep=t=>(t%9===0||t%9===8)?1:(t%9===1||t%9===7)?2:3;
+  res.sort((a,b)=> a.shanten-b.shanten || b.value-a.value || b.count-a.count || keep(a.tile)-keep(b.tile));
+  return res;
+}
+// 減点: 「明らかに損」な選択だけを減点する。最善手との差ではなく許容範囲を設ける
+const LOSS_REGRESS=10;   // シャンテン数が戻る: 1段階あたり
+const LOSS_FREE=0.7;     // 受け入れ枚数が最善の7割以上なら減点なし
+const LOSS_MAX=8;        // 受け入れが0に近いときの減点上限(許容範囲を下回った分だけグラデーション)
+function lossFor(chosen, best){
+  if(chosen.shanten>best.shanten) return LOSS_REGRESS*(chosen.shanten-best.shanten);
+  if(best.shanten===0) return 0;      // 聴牌になる打牌同士の優劣は、局の最終スコア(飜数・待ち)に反映される
+  const r = best.count? chosen.count/best.count : 1;
+  if(r>=LOSS_FREE) return 0;
+  return Math.round(LOSS_MAX*(LOSS_FREE-r)/LOSS_FREE);
+}
+
+/* ---------- 局スコア: 基準点からの差でグラデーション ---------- */
+// 基準値(字牌・ドラ・裏ドラ・赤ドラなし、4シャンテンスタート、牌効率に沿った打牌でのシミュレーション平均)
+const AVG_HAN=2.9, AVG_TURN=10.9, AVG_WAIT=6.1;
+const BASE_SCORE=100;   // 平均飜数で和了・平均巡目で聴牌・平均的な待ち・減点なし のときの基準点
+const HAN_PT=15, TURN_PT=4, WAIT_PT=3;   // 基準との差1あたりの増減
+function waitLabel(waits){
+  const n=waitCount(waits), k=waits.length;
+  return (k>=2&&n>=6)?'良型' : n>=4?'普通' : '愚形';
+}
+function handScore(turns,eHan,wn,loss){
+  const han=Math.round(HAN_PT*(eHan-AVG_HAN));
+  const turn=Math.round(TURN_PT*(AVG_TURN-turns));
+  const wait=Math.round(WAIT_PT*(wn-AVG_WAIT));
+  const raw=BASE_SCORE+han+turn+wait-loss;
+  return {han,turn,wait,loss,total:Math.max(0,raw)};
+}
 
 /* ============ 表示 ============ */
 const SUIT_CLS=['man','pin','sou'], SUIT_CH=['萬','筒','索'];
-const HONORS=['東','南','西','北','白','發','中'];
-const HONOR_CLS=['z','z','z','z','haku','hatsu','chun'];
 function tileEl(t,size){
   const d=document.createElement('div');
-  if(t<27){
-    d.className=`tile ${SUIT_CLS[(t/9)|0]} ${size}`;
-    d.innerHTML=`<span class="n">${t%9+1}</span><span class="s">${SUIT_CH[(t/9)|0]}</span>`;
-  }else{
-    d.className=`tile ${HONOR_CLS[t-27]} ${size}`;
-    d.innerHTML=`<span class="n">${HONORS[t-27]}</span>`;
-  }
+  d.className=`tile ${SUIT_CLS[(t/9)|0]} ${size}`;
+  d.innerHTML=`<span class="n">${t%9+1}</span><span class="s">${SUIT_CH[(t/9)|0]}</span>`;
   return d;
 }
-function tileName(t){ return t<27 ? `${t%9+1}${SUIT_CH[(t/9)|0]}` : HONORS[t-27]; }
+function tileName(t){ return `${t%9+1}${SUIT_CH[(t/9)|0]}`; }
 const $=id=>document.getElementById(id);
 
 /* ============ ゲーム状態 ============ */
-const GOAL=10, DEAD=14, START_SHANTEN=4, PAR_TURN=9, TURN_STEP=0.05;
-// 巡目倍率: 9巡目=×1.0、1巡早いごとに+0.05、遅いごとに-0.05(下限×0.4)
-const speedMult=turns=>Math.max(0.4,1+(PAR_TURN-turns)*TURN_STEP);
+const GOAL=10, START_SHANTEN=4;
 let G;
 function blank(){
-  return {hands:0,score:0,turns:0,perfect:0,discScore:0,agariScore:0,speedScore:0,waitScore:0,agariPts:0,
+  return {hands:0,score:0,turns:0,clean:0,lossTotal:0,hanSum:0,turnSum:0,
     wall:[],hand:new Array(34).fill(0),discards:new Array(34).fill(0),river:[],drawn:null,sel:null,
-    handDisc:0,handBest:0,handTurns:0,log:[]};
+    handLoss:0,handTurns:0,log:[]};
 }
 function newGame(){ G=blank(); newHand(); }
 function newHand(){
   do{
     const wall=[];
-    for(let t=0;t<34;t++) for(let k=0;k<4;k++) wall.push(t);
+    for(let t=0;t<NT;t++) for(let k=0;k<4;k++) wall.push(t);
     for(let i=wall.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [wall[i],wall[j]]=[wall[j],wall[i]]; }
     G.wall=wall; G.hand=new Array(34).fill(0);
     for(let i=0;i<13;i++) G.hand[G.wall.pop()]++;
   }while(shanten(G.hand)!==START_SHANTEN);   // 配牌は4シャンテン固定
   G.discards=new Array(34).fill(0);
-  G.river=[]; G.drawn=null; G.sel=null; G.handDisc=0; G.handBest=0; G.handTurns=0; G.log=[];
-  $('feedback').innerHTML='牌をタップで選択 → もう一度タップで捨てる。<br>聴牌したらその局は終了し、立直・ツモの和了点を計算します。';
+  G.river=[]; G.drawn=null; G.sel=null; G.handLoss=0; G.handTurns=0; G.log=[];
+  $('feedback').innerHTML='牌をタップで選択 → もう一度タップで捨てる。<br>明らかに損な牌を切ると減点。聴牌したら局終了です。';
   draw();
 }
 function draw(){
-  if(G.wall.length<=DEAD){ $('ov-ryu').classList.add('on'); render(); return; }
+  if(G.wall.length===0){ $('ov-ryu').classList.add('on'); render(); return; }
   const t=G.wall.pop();
   G.hand[t]++; G.drawn=t; G.sel=null;
   render();
@@ -419,14 +404,14 @@ function draw(){
 function render(){
   $('wins').textContent=`${Math.min(G.hands+1,GOAL)}/${GOAL}`;
   $('score').textContent=G.score;
-  $('turns').textContent=G.turns;
-  $('left').textContent=Math.max(0,G.wall.length-DEAD);
+  $('turns').textContent=G.handTurns;
+  $('left').textContent=G.wall.length;
   const r=$('river'); r.innerHTML='';
   G.river.forEach(t=>r.appendChild(tileEl(t,'sm')));
   const h=$('hand'); h.innerHTML='';
   const cnt=G.hand.slice();
   if(G.drawn!==null) cnt[G.drawn]--;
-  for(let t=0;t<34;t++) for(let k=0;k<cnt[t];k++) h.appendChild(mk(t,false));
+  for(let t=0;t<NT;t++) for(let k=0;k<cnt[t];k++) h.appendChild(mk(t,false));
   if(G.drawn!==null) h.appendChild(mk(G.drawn,true));
   $('hint').textContent = G.sel!==null ? 'もう一度タップで捨てる' : '';
 }
@@ -441,32 +426,31 @@ function mk(t,isDrawn){
   });
   return e;
 }
-function rankOf(pts){
-  if(pts>=10) return ['◎','最善','s'];
-  if(pts>=8) return ['○','好手','a'];
-  if(pts>=6) return ['△','微妙','b'];
-  return ['×','悪手','c'];
+function rankOf(loss){
+  if(loss===0) return ['✓','問題なし','a'];
+  if(loss<5) return ['△','少し損','b'];
+  return ['×','明らかに損','c'];
 }
 const yen=n=>n.toLocaleString('ja-JP');
 function discard(t){
   const evals=evaluate(G.hand,G.discards);
   const best=evals[0];
   const chosen=evals.find(e=>e.tile===t);
-  const pts=pointsFor(chosen,best);
-  G.handDisc+=pts; G.turns++; G.handTurns++;
-  if(pts===10){ G.perfect++; G.handBest++; }
-  G.log.push({tile:t,pts,best:best.tile});
+  const loss=lossFor(chosen,best);
+  G.handLoss+=loss; G.turns++; G.handTurns++;
+  if(loss===0) G.clean++;
+  G.log.push({tile:t,loss});
   G.hand[t]--; G.discards[t]++; G.river.push(t); G.drawn=null; G.sel=null;
-  showFeedback(t,chosen,best,pts);
+  showFeedback(t,chosen,best,loss);
   if(shanten(G.hand)===0) endHand(); else draw();
 }
 const shName=x=>x.shanten===0?'聴牌':`${x.shanten}シャンテン`;
-function showFeedback(t,chosen,best,pts){
-  const [mark,label,cls]=rankOf(pts);
-  const detail=x=>x.shanten===0?`聴牌 / 待ち${x.wn}枚 期待${yen(Math.round(x.exp))}点`:`${shName(x)} / 受け入れ${x.count}枚`;
-  let html=`<span class="rank ${cls}">${mark} ${label}</span> ${tileName(t)} 切り <b>${pts}/10</b><br>`;
+function showFeedback(t,chosen,best,loss){
+  const [mark,label,cls]=rankOf(loss);
+  const detail=x=>x.shanten===0?`聴牌 / 待ち${x.wn}枚 期待${x.eHan.toFixed(1)}飜`:`${shName(x)} / 受け入れ${x.count}枚`;
+  let html=`<span class="rank ${cls}">${mark} ${label}</span> ${tileName(t)} 切り`+(loss?` <b>−${loss}</b>`:'')+`<br>`;
   html+=`<span style="color:var(--muted)">${detail(chosen)}</span>`;
-  if(pts<10) html+=`<br>おすすめ: <b>${tileName(best.tile)}</b> (${detail(best)})`;
+  if(loss>0) html+=`<br>おすすめ: <b>${tileName(best.tile)}</b> (${detail(best)})`;
   $('feedback').innerHTML=html;
 }
 
@@ -474,44 +458,39 @@ function showFeedback(t,chosen,best,pts){
 function endHand(){
   const visible=G.hand.map((n,i)=>n+G.discards[i]);
   const waits=waitsOf(G.hand,visible);
-  const exp=expectedPoints(waits);
-  const wi=waitInfo(waits);
-  const agari=Math.round(exp/100);                              // 和了点評価: 期待和了点 ÷ 100
-  const quality=Math.round(G.handDisc/G.handTurns*5);           // 打牌評価: 平均×5 (最大50)
-  const mult=speedMult(G.handTurns);
-  const base=agari+wi.bonus;                                    // 倍率の対象: 和了点+待ち形
-  const boosted=Math.round(base*mult);
-  const speed=boosted-base;                                     // 巡目による増減
-  const total=quality+boosted;
-  G.score+=total; G.discScore+=quality; G.agariScore+=agari; G.waitScore+=wi.bonus; G.speedScore+=speed; G.agariPts+=exp; G.hands++;
+  const wn=waitCount(waits), eHan=expectedHan(waits);
+  const sc=handScore(G.handTurns,eHan,wn,G.handLoss);
+  G.score+=sc.total; G.lossTotal+=G.handLoss; G.hanSum+=eHan; G.turnSum+=G.handTurns; G.hands++;
   render();
 
   const box=$('agari-tiles'); box.innerHTML='';
-  for(let t=0;t<34;t++) for(let k=0;k<G.hand[t];k++) box.appendChild(tileEl(t,'sm'));
+  for(let t=0;t<NT;t++) for(let k=0;k<G.hand[t];k++) box.appendChild(tileEl(t,'sm'));
 
   let html='';
   if(!waits.length){
-    html+='<p>待ち牌が残っていません(枯れ)。和了点は 0 です。</p>';
+    html+='<p>待ち牌が残っていません(枯れ)。和了できません。</p>';
   }else{
     html+='<div class="waits">';
     for(const w of waits){
-      const sc=w.sc, ymk=sc.yakuman>0;
-      const head=ymk?(sc.yakuman>1?`${sc.yakuman}倍役満`:'役満'):`${sc.han}翻${sc.fu}符`;
+      const s=w.sc, ymk=s.yakuman>0;
+      const head=ymk?(s.yakuman>1?`${s.yakuman}倍役満`:'役満'):`${s.han}飜${s.fu}符`;
       html+=`<div class="wait"><div class="wh"><span class="wt" data-t="${w.t}"></span>`+
-        `<span>残り${w.rem}枚</span><b>${head} ${yen(sc.points)}点</b></div>`+
-        `<div class="yk">${sc.yaku.map(([n,h])=>`${n}${ymk?'':' '+h}`).join(' / ')}</div></div>`;
+        `<span>残り${w.rem}枚</span><b>${head} ${yen(s.points)}点</b></div>`+
+        `<div class="yk">${s.yaku.map(([n,h])=>`${n}${ymk?'':' '+h}`).join(' / ')}</div></div>`;
     }
     html+='</div>';
   }
-  html+=`<div class="calc">期待和了点 <b>${yen(Math.round(exp))}点</b> / 待ち <b>${wi.label}(${wi.n}枚)</b></div>`;
-  html+='<div class="log">'+G.log.map(l=>{const [m,,c]=rankOf(l.pts);
-    return `<span class="chip ${c}">${tileName(l.tile)} ${m}${l.pts}</span>`;}).join('')+'</div>';
-  const sg=n=>n>0?'+'+n:n;
-  html+=`<table class="sum"><tr><td>打牌評価(◎${G.handBest}/${G.handTurns}打 平均${(G.handDisc/G.handTurns).toFixed(1)}×5)</td><td>${quality}</td></tr>`+
-    `<tr><td>和了点評価(期待点÷100)</td><td>${agari}</td></tr>`+
-    `<tr><td>待ち形ボーナス(${wi.label}・${wi.n}枚)</td><td>${wi.bonus}</td></tr>`+
-    `<tr><td>巡目倍率(${G.handTurns}巡目 ×${mult.toFixed(2)})</td><td>${sg(speed)}</td></tr>`+
-    `<tr><td><b>この局のスコア</b></td><td class="tot">${total}</td></tr></table>`;
+  html+=`<div class="calc">期待 <b>${eHan.toFixed(1)}飜</b> / 待ち <b>${waitLabel(waits)}(${wn}枚)</b></div>`;
+  html+='<div class="log">'+G.log.map(l=>{const [m,,c]=rankOf(l.loss);
+    return `<span class="chip ${c}">${tileName(l.tile)} ${l.loss?'−'+l.loss:m}</span>`;}).join('')+'</div>';
+  const sg=n=>n>0?'+'+n:n<0?'−'+(-n):'±0';
+  html+=`<table class="sum">`+
+    `<tr><td>基準点(平均的な局)</td><td>${BASE_SCORE}</td></tr>`+
+    `<tr><td>飜数(期待${eHan.toFixed(1)} / 基準${AVG_HAN})</td><td>${sg(sc.han)}</td></tr>`+
+    `<tr><td>巡目(${G.handTurns}巡目 / 基準${AVG_TURN})</td><td>${sg(sc.turn)}</td></tr>`+
+    `<tr><td>待ち(${wn}枚 / 基準${AVG_WAIT})</td><td>${sg(sc.wait)}</td></tr>`+
+    `<tr><td>損な打牌の減点</td><td>${sc.loss?'−'+sc.loss:'±0'}</td></tr>`+
+    `<tr><td><b>この局のスコア</b></td><td class="tot">${sc.total}</td></tr></table>`;
   $('agari-info').innerHTML=html;
   document.querySelectorAll('#agari-info .wt').forEach(e=>e.appendChild(tileEl(+e.dataset.t,'sm')));
   $('btn-next').textContent = G.hands>=GOAL ? '結果を見る' : '次の局へ';
@@ -523,31 +502,27 @@ function afterAgari(){
   if(G.hands>=GOAL) finish(); else newHand();
 }
 function finish(){
-  const eff=G.turns? Math.round(G.score/G.turns*10)/10 : 0;
   $('end-score').textContent=G.score+' 点';
   $('end-table').innerHTML=
-    `<tr><td>総打牌数</td><td>${G.turns}</td></tr>`+
-    `<tr><td>最善手の数</td><td>${G.perfect}</td></tr>`+
-    `<tr><td>打牌評価の合計</td><td>${G.discScore}</td></tr>`+
-    `<tr><td>和了点評価の合計</td><td>${G.agariScore}</td></tr>`+
-    `<tr><td>待ち形ボーナスの合計</td><td>${G.waitScore}</td></tr>`+
-    `<tr><td>巡目倍率による増減</td><td>${G.speedScore}</td></tr>`+
-    `<tr><td>平均和了点(期待値)</td><td>${yen(Math.round(G.agariPts/GOAL))}点</td></tr>`+
-    `<tr><td>1打あたり</td><td>${eff}点</td></tr>`;
+    `<tr><td>1局あたりのスコア</td><td>${(G.score/GOAL).toFixed(1)} (基準${BASE_SCORE})</td></tr>`+
+    `<tr><td>平均聴牌巡目</td><td>${(G.turnSum/GOAL).toFixed(1)} (基準${AVG_TURN})</td></tr>`+
+    `<tr><td>平均期待飜数</td><td>${(G.hanSum/GOAL).toFixed(1)} (基準${AVG_HAN})</td></tr>`+
+    `<tr><td>減点なしの打牌</td><td>${G.clean}/${G.turns}</td></tr>`+
+    `<tr><td>減点の合計</td><td>${G.lossTotal?'−'+G.lossTotal:'0'}</td></tr>`;
   let best=null;
-  try{ best=JSON.parse(localStorage.getItem('mj-best4')||'null'); }catch(e){}
+  try{ best=JSON.parse(localStorage.getItem('mj-best5')||'null'); }catch(e){}
   let msg;
   if(!best || G.score>best.score){
     msg='🎉 ベストスコア更新！';
-    try{ localStorage.setItem('mj-best4',JSON.stringify({score:G.score,turns:G.turns})); }catch(e){}
-  }else msg=`ベスト: ${best.score}点 (${best.turns}打)`;
+    try{ localStorage.setItem('mj-best5',JSON.stringify({score:G.score,turns:G.turns})); }catch(e){}
+  }else msg=`ベスト: ${best.score}点`;
   $('end-best').textContent=msg;
   $('ov-end').classList.add('on');
 }
 function bestText(){
   try{
-    const b=JSON.parse(localStorage.getItem('mj-best4')||'null');
-    return b?`ベスト: ${b.score}点 (${b.turns}打)`:'';
+    const b=JSON.parse(localStorage.getItem('mj-best5')||'null');
+    return b?`ベスト: ${b.score}点`:'';
   }catch(e){return '';}
 }
 
