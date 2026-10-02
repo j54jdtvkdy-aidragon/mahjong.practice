@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0b5d3b">
 <title>麻雀何切る練習</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@900&text=%E4%B8%80%E4%BA%8C%E4%B8%89%E5%9B%9B%E4%BA%94%E5%85%AD%E4%B8%83%E5%85%AB%E4%B9%9D%E8%90%AC&display=swap">
 <style>
 :root{
   --bg:#0b5d3b; --panel:#0e4a31; --text:#f4f1e6; --muted:#a9c9b8;
@@ -22,25 +24,21 @@ header{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
 .stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
 .stat span{font-size:11px;color:var(--muted)}
 h2{margin:14px 0 6px;font-size:12px;color:var(--muted);font-weight:600}
-#river{display:flex;flex-wrap:wrap;gap:2px;min-height:78px;background:var(--panel);
+#river{display:flex;flex-wrap:wrap;gap:2px;min-height:70px;background:var(--panel);
   border-radius:10px;padding:6px;align-content:flex-start}
 #feedback{margin:10px 0;min-height:64px;background:var(--panel);border-radius:10px;
   padding:8px 12px;font-size:14px;line-height:1.5}
 #feedback .rank{font-size:22px;font-weight:800;margin-right:6px}
 .rank.s{color:var(--good)} .rank.a{color:#9be59b} .rank.b{color:#ffb86b} .rank.c{color:var(--bad)}
-.tile{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
-  background:var(--tile);border:1px solid var(--tile-edge);border-bottom-width:4px;border-radius:5px;
-  color:#222;font-weight:800;line-height:1;user-select:none}
-.tile .n{font-size:1em}
-.tile .s{font-size:.55em;margin-top:.12em}
-.tile.man{color:#c2261b} .tile.pin{color:#1454a8} .tile.sou{color:#177a3a}
-.tile.z{color:#222} .tile.haku{color:#666} .tile.hatsu{color:#177a3a} .tile.chun{color:#c2261b}
-.sm{width:24px;height:33px;font-size:15px}
-.lg{width:calc((100vw - 32px - 26px)/7);max-width:68px;aspect-ratio:3/4;font-size:clamp(20px,6.4vw,32px)}
-#hand{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:4px}
-#hand .tile{transition:transform .08s;cursor:pointer}
-#hand .tile.sel{transform:translateY(-10px);box-shadow:0 6px 10px rgba(0,0,0,.4);border-color:var(--good)}
-#hand .tile.drawn{margin-left:8px}
+.tile{display:block;line-height:0;user-select:none}
+.tile svg{display:block;width:100%;height:auto;filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))}
+.tile.sm{width:22px;flex:none}
+/* 手牌: 14枚(13+ツモ牌)が縦画面でも1列に収まる幅に自動で縮む */
+#hand{display:flex;flex-wrap:nowrap;gap:1px;justify-content:center;align-items:flex-end;margin-top:14px;padding-top:10px}
+#hand .tile{flex:1 1 0;min-width:0;max-width:44px;transition:transform .08s;cursor:pointer}
+#hand .tile.drawn{margin-left:7px}
+#hand .tile.sel{transform:translateY(-9px)}
+#hand .tile.sel svg{filter:drop-shadow(0 0 0 #ffd54a) drop-shadow(0 4px 5px rgba(0,0,0,.5)) drop-shadow(0 0 3px #ffd54a)}
 .hint{text-align:center;font-size:12px;color:var(--muted);margin-top:14px;min-height:16px}
 button{font:inherit;border:0;border-radius:12px;padding:14px 18px;font-weight:800;font-size:18px;
   background:var(--good);color:#3b2a00;width:100%}
@@ -363,11 +361,77 @@ function handScore(turns,eHan,wn,loss){
 }
 
 /* ============ 表示 ============ */
-const SUIT_CLS=['man','pin','sou'], SUIT_CH=['萬','筒','索'];
+/* ============ 牌の描画(SVG) ============ */
+// 牌面は象牙色、下辺に牌の背(緑)が見える。萬子=漢数字+萬、筒子=円、索子=竹
+const SUIT_CH=['萬','筒','索'];
+const INK='#1b1b1b', RED='#c8281e', GRN='#1d7a3c', BLU='#1c4f9c', FACE='#f6f0da';
+const KANJI=['一','二','三','四','五','六','七','八','九'];
+const SERIF='"Noto Serif JP","Hiragino Mincho ProN","Yu Mincho","MS PMincho",serif';
+function dot(cx,cy,r,col){
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/><circle cx="${cx}" cy="${cy}" r="${r*0.64}" fill="${FACE}"/>`+
+         `<circle cx="${cx}" cy="${cy}" r="${r*0.36}" fill="${col}"/>`;
+}
+function pinFace(n){
+  const g=GRN,r=RED,b=BLU;
+  const L={
+    2:[[30,22,10,g],[30,57,10,b]],
+    3:[[17,19,9,b],[30,39.5,9,r],[43,60,9,g]],
+    4:[[18,22,9,b],[42,22,9,g],[18,57,9,g],[42,57,9,b]],
+    5:[[18,22,9,b],[42,22,9,g],[30,39.5,9,r],[18,57,9,g],[42,57,9,b]],
+    6:[[19,17,8.5,g],[41,17,8.5,g],[19,39.5,8.5,r],[41,39.5,8.5,r],[19,62,8.5,r],[41,62,8.5,r]],
+    7:[[15,14,7,g],[28,22,7,g],[41,30,7,g],[19,52,7,r],[41,52,7,r],[19,64,7,r],[41,64,7,r]],
+    8:[19,41].flatMap(x=>[14,30,47,63].map(y=>[x,y,7.5,b])),
+    9:[15,30,45].flatMap(x=>[[x,17,7.5,g],[x,39.5,7.5,r],[x,62,7.5,b]])
+  };
+  if(n===1) return `<circle cx="30" cy="39.5" r="23" fill="${b}"/><circle cx="30" cy="39.5" r="19" fill="${FACE}"/>`+
+    `<circle cx="30" cy="39.5" r="16" fill="${g}"/><circle cx="30" cy="39.5" r="11" fill="${FACE}"/>`+
+    `<circle cx="30" cy="39.5" r="7" fill="${r}"/>`;
+  return L[n].map(([x,y,rr,c])=>dot(x,y,rr,c)).join('');
+}
+function stick(cx,cy,h,col){
+  const x=cx-4, y=cy-h/2;
+  return `<rect x="${x}" y="${y}" width="8" height="${h}" rx="3" fill="${col}"/>`+
+    `<rect x="${x}" y="${cy-0.6}" width="8" height="1.3" fill="${FACE}"/>`+
+    `<rect x="${x}" y="${y+h*0.28}" width="8" height="1" fill="${FACE}" opacity=".7"/>`+
+    `<rect x="${x}" y="${y+h*0.72}" width="8" height="1" fill="${FACE}" opacity=".7"/>`;
+}
+function souFace(n){
+  const g=GRN,r=RED,b=BLU;
+  if(n===1) return `<ellipse cx="30" cy="44" rx="12" ry="15" fill="${g}"/><circle cx="30" cy="23" r="8" fill="${g}"/>`+
+    `<polygon points="35,22 44,25 35,28" fill="${r}"/><circle cx="32" cy="21" r="1.6" fill="${FACE}"/>`+
+    `<path d="M24 40 Q30 50 36 40" stroke="${FACE}" stroke-width="2" fill="none"/>`+
+    `<path d="M26 58 L22 71 M30 58 L30 72 M34 58 L38 71" stroke="${r}" stroke-width="3.2" stroke-linecap="round"/>`;
+  const st=(pts,h,cols)=>pts.map(([x,y],i)=>stick(x,y,h,Array.isArray(cols)?cols[i%cols.length]:cols)).join('');
+  switch(n){
+    case 2: return st([[30,22],[30,57]],28,[g,b]);
+    case 3: return st([[30,22],[20,57],[40,57]],28,g);
+    case 4: return st([[20,22],[40,22],[20,57],[40,57]],28,[g,b,b,g]);
+    case 5: return st([[19,22],[41,22],[19,57],[41,57]],28,[g,b,b,g])+stick(30,39.5,28,r);
+    case 6: return st([16,30,44].flatMap(x=>[[x,22],[x,57]]),28,g);
+    case 7: return stick(30,13,17,r)+st([16,30,44].flatMap(x=>[[x,38],[x,60]]),19,g);
+    case 8: return st([12,23,35,46].flatMap(x=>[[x,22],[x,57]]),28,g);
+    case 9: return [16,30,44].flatMap((x,i)=>[17,39.5,62].map(y=>stick(x,y,20,i===1?r:(y===39.5?b:g)))).join('');
+  }
+}
+const tileCache={};
+function tileSVG(t){
+  if(tileCache[t]) return tileCache[t];
+  const s=(t/9)|0, n=t%9+1;
+  let face;
+  if(s===0) face=`<text x="30" y="35" text-anchor="middle" font-family='${SERIF}' font-weight="900" font-size="35" fill="${INK}">${KANJI[n-1]}</text>`+
+    `<text x="30" y="68" text-anchor="middle" font-family='${SERIF}' font-weight="900" font-size="29" fill="${RED}">萬</text>`;
+  else face = s===1 ? pinFace(n) : souFace(n);
+  return tileCache[t]=`<svg viewBox="0 0 60 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`+
+    `<rect width="60" height="86" rx="7" fill="#2a8a5f"/><rect y="5" width="60" height="81" rx="7" fill="#1f6e4a"/>`+   // 牌の背(緑)
+    `<rect width="60" height="78" rx="7" fill="${FACE}" stroke="#cdc4a0" stroke-width="1"/>`+                         // 牌面
+    `<rect x="4" y="2.5" width="52" height="2.2" rx="1.1" fill="#fff" opacity=".7"/>`+                                 // つや
+    face+`</svg>`;
+}
 function tileEl(t,size){
   const d=document.createElement('div');
-  d.className=`tile ${SUIT_CLS[(t/9)|0]} ${size}`;
-  d.innerHTML=`<span class="n">${t%9+1}</span><span class="s">${SUIT_CH[(t/9)|0]}</span>`;
+  d.className=`tile ${size}`;
+  d.setAttribute('role','img'); d.setAttribute('aria-label',tileName(t));
+  d.innerHTML=tileSVG(t);
   return d;
 }
 function tileName(t){ return `${t%9+1}${SUIT_CH[(t/9)|0]}`; }
