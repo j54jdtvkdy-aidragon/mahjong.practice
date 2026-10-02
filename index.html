@@ -12,11 +12,11 @@
   --good:#ffd54a; --bad:#ff7a6b;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+html,body{margin:0;height:100%;color-scheme:dark;background:var(--bg);color:var(--text);
   font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
   overscroll-behavior:none;touch-action:manipulation}
 #app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
-  padding:max(10px,env(safe-area-inset-top)) 12px max(14px,env(safe-area-inset-bottom))}
+  padding:10px 16px 14px}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
 .stat{background:var(--panel);border-radius:10px;padding:6px 10px;flex:1;text-align:center}
 .stat b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
@@ -36,7 +36,7 @@ h2{margin:14px 0 6px;font-size:12px;color:var(--muted);font-weight:600}
 .tile.man{color:#c2261b} .tile.pin{color:#1454a8} .tile.sou{color:#177a3a}
 .tile.z{color:#222} .tile.haku{color:#666} .tile.hatsu{color:#177a3a} .tile.chun{color:#c2261b}
 .sm{width:24px;height:33px;font-size:15px}
-.lg{width:calc((100vw - 24px - 26px)/7);max-width:68px;aspect-ratio:3/4;font-size:clamp(20px,6.4vw,32px)}
+.lg{width:calc((100vw - 32px - 26px)/7);max-width:68px;aspect-ratio:3/4;font-size:clamp(20px,6.4vw,32px)}
 #hand{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:4px}
 #hand .tile{transition:transform .08s;cursor:pointer}
 #hand .tile.sel{transform:translateY(-10px);box-shadow:0 6px 10px rgba(0,0,0,.4);border-color:var(--good)}
@@ -529,7 +529,13 @@ function bestText(){
 $('btn-next').onclick=afterAgari;
 $('btn-ryu').onclick=()=>{ $('ov-ryu').classList.remove('on'); newHand(); };
 $('btn-again').onclick=()=>{ $('ov-end').classList.remove('on'); newGame(); };
-$('giveup').onclick=()=>{ if(confirm('最初からやり直しますか?')) newGame(); };
+let giveupTimer=null;
+$('giveup').onclick=()=>{
+  const b=$('giveup');
+  if(giveupTimer){ clearTimeout(giveupTimer); giveupTimer=null; b.textContent='最初からやり直す'; newGame(); return; }
+  b.textContent='もう一度タップで最初から';
+  giveupTimer=setTimeout(()=>{ giveupTimer=null; b.textContent='最初からやり直す'; },3000);
+};
 $('btn-start').onclick=()=>{ $('ov-start').classList.remove('on'); newGame(); };
 $('best-start').textContent=bestText();
 $('ov-start').classList.add('on');
